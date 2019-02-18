@@ -15,37 +15,77 @@ from OpenGL.arrays import vbo
 import data3d
 
 
-def _build_example_program():
-    example_vertex_shader = shaders.compileShader(
+def _build_vertex_color_program():
+    vertex_shader = shaders.compileShader(
         """
-        #version 140
+        #version 130
         uniform mat4 mvp;
 
         in vec3 position;
+        in vec3 color;
 
+        out vec3 inter_color;
+        
+        void main() {
+            vec4 camera_space_position = mvp * vec4(position, 1.0);
+            gl_Position = camera_space_position;
+            inter_color = color;
+        }""",
+        GL.GL_VERTEX_SHADER
+    )
+    fragment_shader = shaders.compileShader(
+        """
+        #version 130
+        in vec3 inter_color;
+        
+        out vec3 out_color;
+
+        void main() {
+            out_color = inter_color;
+        }""",
+        GL.GL_FRAGMENT_SHADER
+    )
+
+    return shaders.compileProgram(
+        vertex_shader, fragment_shader
+    )
+
+
+def _build_fragment_color_program():
+    vertex_shader = shaders.compileShader(
+        """
+        #version 130
+        uniform mat4 mvp;
+
+        in vec3 position;
+       
         void main() {
             vec4 camera_space_position = mvp * vec4(position, 1.0);
             gl_Position = camera_space_position;
         }""",
         GL.GL_VERTEX_SHADER
     )
-    example_fragment_shader = shaders.compileShader(
+    fragment_shader = shaders.compileShader(
         """
-        #version 140
+        #version 130
+        uniform vec3 color;
+        
         out vec3 out_color;
 
         void main() {
-            out_color = vec3(1, 0, 0);
+            out_color = color;
         }""",
         GL.GL_FRAGMENT_SHADER
     )
 
     return shaders.compileProgram(
-        example_vertex_shader, example_fragment_shader
+        vertex_shader, fragment_shader
     )
 
 
 class CameraTrackRenderer:
+    _yellow = np.array([1., 1., 0], dtype=np.float32)
+    _white = np.array([1., 1., 1.], dtype=np.float32)
 
     def __init__(self,
                  cam_model_files: Tuple[str, str],
@@ -63,9 +103,17 @@ class CameraTrackRenderer:
         :param point_cloud: colored point cloud
         """
 
-        self._example_buffer_object = vbo.VBO(np.array([0, 0, 0], dtype=np.float32))
+        self._camera_parameters = tracked_cam_parameters
+        self._camera_track_positions = np.array([pose.t_vec for pose in tracked_cam_track], dtype=np.float32)
+        self._camera_track_rotations = np.array([pose.r_mat for pose in tracked_cam_track], dtype=np.float32)
 
-        self._example_program = _build_example_program()
+        self._cloud_ids = point_cloud.ids
+        self._n_cloud_points = len(point_cloud.ids)
+        self._cloud_points_buffer = self._bufferize(point_cloud.points)
+        self._cloud_colors_buffer = self._bufferize(point_cloud.colors)
+
+        self._vertex_program = _build_vertex_color_program()
+        self._fragment_program = _build_fragment_color_program()
 
         GLUT.glutInitDisplayMode(GLUT.GLUT_RGBA | GLUT.GLUT_DOUBLE | GLUT.GLUT_DEPTH)
         GL.glEnable(GL.GL_DEPTH_TEST)
@@ -90,24 +138,113 @@ class CameraTrackRenderer:
 
         GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
 
-        self._render_example_point(np.eye(4))
+        model = np.diag([1, -1, -1, 1]).astype(np.float32)
+        view = self._view_matrix(camera_tr_vec, camera_rot_mat)
+        projection = self._projection_matrix_from_fovy(camera_fov_y)
+        mvp = projection.dot(view.dot(model))
+
+        # Cloud of points
+        self._render_object(mvp, self._cloud_points_buffer, self._cloud_colors_buffer,
+                            self._vertex_program, self._n_cloud_points)
+
+        # Camera track
+        # print(self._camera_track_positions[:tracked_cam_track_pos + 1])
+        self._render_object(mvp, self._bufferize(self._camera_track_positions[:tracked_cam_track_pos + 1]),
+                            self._white, self._fragment_program, tracked_cam_track_pos + 1,
+                            uniform_color=True, drawing_object=GL.GL_LINE_STRIP)
+
+        # Frustum
+        frustum_corners = self._frustum_corners(camera_fov_y,
+                                               self._camera_track_positions[tracked_cam_track_pos],
+                                               self._camera_track_rotations[tracked_cam_track_pos])
+
+        self._render_object(mvp, self._bufferize(frustum_corners),
+                            self._yellow, self._fragment_program, 4,
+                            uniform_color=True, drawing_object=GL.GL_LINE_LOOP)
+
+        self._render_object(mvp, self._bufferize(np.array(
+            [[self._camera_track_positions[tracked_cam_track_pos], p] for p in frustum_corners]
+        )),
+                            self._yellow, self._fragment_program, 8,
+                            uniform_color=True, drawing_object=GL.GL_LINES)
 
         GLUT.glutSwapBuffers()
 
-    def _render_example_point(self, mvp):
-        shaders.glUseProgram(self._example_program)
-        self._example_buffer_object.bind()
+    @staticmethod
+    def _view_matrix(camera_tr_vec, camera_rot_mat):
+        translation = np.eye(4, dtype=np.float32)
+        translation[:3, 3] = -camera_tr_vec
+
+        rotation = np.eye(4, dtype=np.float32)
+        rotation[:3, :3] = np.linalg.inv(camera_rot_mat)
+
+        return np.dot(rotation, translation)
+
+    def _projection_matrix_from_fovy(self, fovy, znear=0.5, zfar=100.):
+        t = np.tan(fovy) * znear
+        r = t * self._aspect_ratio()
+        return self._projection_matrix(znear, zfar, r, t)
+
+    @staticmethod
+    def _projection_matrix(n, f, r, t):
+        return np.array([[n / r, 0, 0, 0],
+                         [0, n / t, 0, 0],
+                         [0, 0, -(f + n) / (f - n), -2 * f * n / (f - n)],
+                         [0, 0, -1, 0]],
+                        dtype=np.float32)
+
+    def _frustum_corners(self, fovy, camera_tr_vec, camera_rot_mat):
+        z = 5.
+
+        t = np.tan(fovy) * z
+        b = -t
+        r = t * self._aspect_ratio()
+        l = -r
+
+        return np.array([camera_tr_vec] * 4, dtype=np.float32) + camera_rot_mat.dot(np.array([[r, t, z],
+                                                                                              [r, b, z],
+                                                                                              [l, b, z],
+                                                                                              [l, t, z]]).T).T
+
+    @staticmethod
+    def _render_object(mvp, position, color, program, n_points, uniform_color=False, drawing_object=GL.GL_POINTS):
+        shaders.glUseProgram(program)
         GL.glUniformMatrix4fv(
-            GL.glGetUniformLocation(self._example_program, 'mvp'),
+            GL.glGetUniformLocation(program, 'mvp'),
             1, True, mvp)
-        position_loc = GL.glGetAttribLocation(self._example_program, 'position')
+
+        # If color is fragment-level then use uniform, pass an array otherwise
+        if uniform_color:
+            GL.glUniform3fv(
+                GL.glGetUniformLocation(program, 'color'),
+                1, color)
+        else:
+            color.bind()
+            color_loc = GL.glGetAttribLocation(program, 'color')
+            GL.glEnableVertexAttribArray(color_loc)
+            GL.glVertexAttribPointer(color_loc, 3, GL.GL_FLOAT,
+                                     False, 0,
+                                     color)
+
+        position.bind()
+        position_loc = GL.glGetAttribLocation(program, 'position')
         GL.glEnableVertexAttribArray(position_loc)
         GL.glVertexAttribPointer(position_loc, 3, GL.GL_FLOAT,
                                  False, 0,
-                                 self._example_buffer_object)
-
-        GL.glDrawArrays(GL.GL_POINTS, 0, 1)
+                                 position)
+        GL.glDrawArrays(drawing_object, 0, n_points)
 
         GL.glDisableVertexAttribArray(position_loc)
-        self._example_buffer_object.unbind()
+        position.unbind()
+        if not uniform_color:
+            GL.glDisableVertexAttribArray(color_loc)
+            color.unbind()
         shaders.glUseProgram(0)
+
+    @staticmethod
+    def _aspect_ratio():
+        return GLUT.glutGet(GLUT.GLUT_WINDOW_WIDTH) / GLUT.glutGet(GLUT.GLUT_WINDOW_HEIGHT)
+
+    @staticmethod
+    def _bufferize(arr):
+        return vbo.VBO(arr.astype(np.float32).reshape(-1))
