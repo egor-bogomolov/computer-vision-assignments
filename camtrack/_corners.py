@@ -236,7 +236,7 @@ def create_cli(build):
             if min_track is not None:
                 corner_storage = without_short_tracks(corner_storage, min_track)
             click.echo(
-                "Press 'q' to stop, 'd' to go forward, 'a' to go backward"
+                "Press 'q' to stop, 'd' to go forward, 'a' to go backward, 'r' to restart the video"
             )
             frame = 0
             while True:
@@ -248,6 +248,8 @@ def create_cli(build):
                     frame -= 1
                 if key == 'd' and frame + 1 < len(corner_storage):
                     frame += 1
+                if key == 'r':
+                    frame = 0
                 if key == 'q':
                     break
 
