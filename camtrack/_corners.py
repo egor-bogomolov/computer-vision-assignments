@@ -218,7 +218,9 @@ def create_cli(build):
     @click.option('file_to_load', '--load-corners', type=click.File('rb'))
     @click.option('file_to_dump', '--dump-corners', type=click.File('wb'))
     @click.option('--show', is_flag=True)
-    def cli(frame_sequence, file_to_load, file_to_dump, show):
+    @click.option('--min_track', type=int)
+    @click.option('--max_corners', type=int)
+    def cli(frame_sequence, file_to_load, file_to_dump, show, min_track=None, max_corners=500):
         """
         FRAME_SEQUENCE path to a video file or shell-like wildcard describing
         multiple images
@@ -227,10 +229,12 @@ def create_cli(build):
         if file_to_load is not None:
             corner_storage = load(file_to_load)
         else:
-            corner_storage = build(sequence)
+            corner_storage = build(sequence, max_corners=max_corners)
         if file_to_dump is not None:
             dump(corner_storage, file_to_dump)
         if show:
+            if min_track is not None:
+                corner_storage = without_short_tracks(corner_storage, min_track)
             click.echo(
                 "Press 'q' to stop, 'd' to go forward, 'a' to go backward"
             )
