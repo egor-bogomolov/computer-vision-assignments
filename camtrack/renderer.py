@@ -86,6 +86,7 @@ def _build_fragment_color_program():
 class CameraTrackRenderer:
     _yellow = np.array([1., 1., 0], dtype=np.float32)
     _white = np.array([1., 1., 1.], dtype=np.float32)
+    _blue = np.array([0., 0., 1.], dtype=np.float32)
 
     def __init__(self,
                  cam_model_files: Tuple[str, str],
@@ -114,6 +115,10 @@ class CameraTrackRenderer:
 
         self._vertex_program = _build_vertex_color_program()
         self._fragment_program = _build_fragment_color_program()
+
+        camera_vertices = self._load_obj_file(cam_model_files[0])
+        self._camera_vertices = camera_vertices
+        self._n_camera_vertices = len(camera_vertices)
 
         GLUT.glutInitDisplayMode(GLUT.GLUT_RGBA | GLUT.GLUT_DOUBLE | GLUT.GLUT_DEPTH)
         GL.glEnable(GL.GL_DEPTH_TEST)
@@ -167,6 +172,15 @@ class CameraTrackRenderer:
         )),
                             self._yellow, self._fragment_program, 8,
                             uniform_color=True, drawing_object=GL.GL_LINES)
+
+        camera_pos = self._camera_track_positions[tracked_cam_track_pos]
+        camera_rot = self._camera_track_rotations[tracked_cam_track_pos]
+        rot_matrix = np.diag([-1., -1., -1.])
+        camera_vertices = np.array([rot_matrix.dot(camera_rot.dot(v)) + camera_pos
+                                    for v in self._camera_vertices], dtype=np.float32)
+        self._render_object(mvp, self._bufferize(camera_vertices),
+                            self._blue, self._fragment_program, self._n_camera_vertices,
+                            uniform_color=True, drawing_object=GL.GL_TRIANGLES)
 
         GLUT.glutSwapBuffers()
 
@@ -248,3 +262,17 @@ class CameraTrackRenderer:
     @staticmethod
     def _bufferize(arr):
         return vbo.VBO(arr.astype(np.float32).reshape(-1))
+
+    @staticmethod
+    def _load_obj_file(filename):
+        with open(filename, 'r') as f:
+            vertices = []
+            faces = []
+            for line in f:
+                t, *r = line.split()
+                if t == 'v':
+                    vertices.append(list(map(np.float32, r)))
+                elif t == 'f':
+                    faces.append(list(map(lambda ind: int(ind) - 1, r)))
+
+            return np.array([vertices[ind] for face in faces for ind in face], dtype=np.float32)
