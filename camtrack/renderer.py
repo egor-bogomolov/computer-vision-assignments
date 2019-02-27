@@ -186,16 +186,14 @@ class CameraTrackRenderer:
 
     @staticmethod
     def _view_matrix(camera_tr_vec, camera_rot_mat):
-        translation = np.eye(4, dtype=np.float32)
-        translation[:3, 3] = -camera_tr_vec
+        view_inv = np.eye(4, dtype=np.float32)
+        view_inv[:3, 3] = camera_tr_vec
+        view_inv[:3, :3] = camera_rot_mat
 
-        rotation = np.eye(4, dtype=np.float32)
-        rotation[:3, :3] = np.linalg.inv(camera_rot_mat)
-
-        return np.dot(rotation, translation)
+        return np.linalg.inv(view_inv)
 
     def _projection_matrix_from_fovy(self, fovy, znear=0.5, zfar=100.):
-        t = np.tan(fovy) * znear
+        t = np.tan(fovy / 2) * znear
         r = t * self._aspect_ratio()
         return self._projection_matrix(znear, zfar, r, t)
 
@@ -208,9 +206,9 @@ class CameraTrackRenderer:
                         dtype=np.float32)
 
     def _frustum_corners(self, fovy, camera_tr_vec, camera_rot_mat):
-        z = 5.
+        z = 30.
 
-        t = np.tan(fovy) * z
+        t = np.tan(fovy / 2) * z
         b = -t
         r = t * self._aspect_ratio()
         l = -r
