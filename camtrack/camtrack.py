@@ -101,16 +101,29 @@ class CameraTracker:
         self._log_added_points(frame_ind1, frame_ind2, self._add_points(points, ids))
 
     def _tracking(self):
-        for i in range(self._n_frames):
-            if self._track[i] is not None:
-                continue
+        added = True
+        while added:
+            added = False
+            for i in range(self._n_frames):
+                if self._track[i] is not None:
+                    continue
 
-            self._track[i] = self._compute_frame_matrix(self._corner_storage[i])
-            if self._track[i] is not None:
-                for j in range(self._n_frames):
-                    if self._track[j] is not None and i != j:
-                        self._add_cloud_points(i, j)
-                print(f"Processed frame {i}")
+                self._track[i] = self._compute_frame_matrix(self._corner_storage[i])
+                if self._track[i] is not None:
+                    for j in range(self._n_frames):
+                        if self._track[j] is not None and i != j:
+                            self._add_cloud_points(i, j)
+                    print(f"Processed frame {i}")
+                    added = True
+
+        prev = -1
+        for i in range(self._n_frames):
+            if self._track[i] is None:
+                self._track[i] = self._track[prev]
+            else:
+                prev = i
+
+
 
     def _compute_frame_matrix(self, frame: FrameCorners):
         frame_ids = frame.ids.squeeze(-1)
@@ -154,7 +167,7 @@ class CameraTracker:
 def _track_camera(corner_storage: CornerStorage,
                   intrinsic_mat: np.ndarray) \
         -> Tuple[List[np.ndarray], PointCloudBuilder]:
-    parameters = TriangulationParameters(max_reprojection_error=1., min_triangulation_angle_deg=0.01, min_depth=0.1)
+    parameters = TriangulationParameters(max_reprojection_error=0.1, min_triangulation_angle_deg=5., min_depth=1.)
     tracker = CameraTracker(corner_storage, intrinsic_mat, parameters)
     return tracker.track(), tracker.point_cloud_builder()
 
