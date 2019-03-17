@@ -27,8 +27,8 @@ class CameraTracker:
         self._point_positions = [None] * (corner_storage.max_corner_id() + 1)
 
         frame_ind1, frame_ind2 = self._initialization()
-        print(frame_ind1, frame_ind2)
-        print(self._n_frames)
+        # print(frame_ind1, frame_ind2)
+        # print(self._n_frames)
         self._add_cloud_points(frame_ind1, frame_ind2)
         self._tracking()
 
@@ -37,9 +37,11 @@ class CameraTracker:
         poses_cloud_size = []
         indices = []
         for i in range(1, len(self._corner_storage)):
+            print(f"Processing frames {1} and {i + 1}")
             pose, pose_cloud_size = self._two_frame_initialization(self._corner_storage[0], self._corner_storage[i])
             poses.append(pose)
             poses_cloud_size.append(pose_cloud_size)
+            print(f"Found {pose_cloud_size} points")
             indices.append(i)
 
         index = np.argmax(poses_cloud_size)
@@ -167,7 +169,7 @@ class CameraTracker:
 def _track_camera(corner_storage: CornerStorage,
                   intrinsic_mat: np.ndarray) \
         -> Tuple[List[np.ndarray], PointCloudBuilder]:
-    parameters = TriangulationParameters(max_reprojection_error=0.1, min_triangulation_angle_deg=5., min_depth=1.)
+    parameters = TriangulationParameters(max_reprojection_error=0.5, min_triangulation_angle_deg=5., min_depth=1.)
     tracker = CameraTracker(corner_storage, intrinsic_mat, parameters)
     return tracker.track(), tracker.point_cloud_builder()
 
