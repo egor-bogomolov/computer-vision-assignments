@@ -138,7 +138,7 @@ class CameraTracker:
         points = frame.points[mask == 1]
         n_points = points.shape[0]
 
-        if n_points < 4:
+        if n_points < 6:
             return None
 
         object_points = np.array([self._point_positions[ind] for ind in ids if self._point_positions[ind] is not None])
@@ -169,7 +169,7 @@ class CameraTracker:
 def _track_camera(corner_storage: CornerStorage,
                   intrinsic_mat: np.ndarray) \
         -> Tuple[List[np.ndarray], PointCloudBuilder]:
-    parameters = TriangulationParameters(max_reprojection_error=1.0, min_triangulation_angle_deg=2., min_depth=1.)
+    parameters = TriangulationParameters(max_reprojection_error=1., min_triangulation_angle_deg=2., min_depth=0.1)
     tracker = CameraTracker(corner_storage, intrinsic_mat, parameters)
     return tracker.track(), tracker.point_cloud_builder()
 
