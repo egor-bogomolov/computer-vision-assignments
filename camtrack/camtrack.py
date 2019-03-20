@@ -75,7 +75,7 @@ class CameraTracker:
         correspondences_filtered = remove_correspondences_with_ids(correspondences, np.argwhere(mask_essential == 0))
 
         R1, R2, t = cv2.decomposeEssentialMat(essential_mat)
-        possible_poses = [Pose(R1, t), Pose(R2, t), Pose(R1, -t), Pose(R2, -t)]
+        possible_poses = [Pose(R1.T, R1.T @ t), Pose(R2.T, R2.T @ t), Pose(R1.T, R1.T @ (-t)), Pose(R2.T, R2.T @ (-t))]
         poses2points = [0] * 4
 
         for i, pose in enumerate(possible_poses):
