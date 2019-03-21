@@ -231,7 +231,7 @@ def create_cli(build):
     @click.option('--show', is_flag=True)
     @click.option('--min_track', type=int)
     @click.option('--max_corners', type=int)
-    def cli(frame_sequence, file_to_load, file_to_dump, show, min_track=None, max_corners=500):
+    def cli(frame_sequence, file_to_load, file_to_dump, show, min_track=None, max_corners=2000):
         """
         FRAME_SEQUENCE path to a video file or shell-like wildcard describing
         multiple images

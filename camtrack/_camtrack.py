@@ -414,7 +414,7 @@ def create_cli(track_and_calc_colors):
         if file_to_load_corners is not None:
             corner_storage = load(file_to_load_corners)
         else:
-            corner_storage = build(sequence)
+            corner_storage = build(sequence, max_corners=2000)
 
         camera_parameters = read_camera_parameters(camera)
         poses, point_cloud = track_and_calc_colors(camera_parameters,
