@@ -125,6 +125,7 @@ def build(frame_sequence: pims.FramesSequence,
     :param max_corners: maximal number of corners per frame.
     :return: corners for all frames of given sequence.
     """
+    max_corners = max(max_corners, len(frame_sequence) * 10)
     if progress:
         with click.progressbar(length=len(frame_sequence),
                                label='Calculating corners') as progress_bar:
