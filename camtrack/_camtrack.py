@@ -9,10 +9,12 @@ __all__ = [
     'check_inliers_mask',
     'check_baseline',
     'compute_reprojection_errors',
+    'compute_reprojection_error',
     'create_cli',
     'draw_residuals',
     'eye3x4',
     'project_points',
+    'view_mat3x4_to_rodrigues_and_translation',
     'rodrigues_and_translation_to_view_mat3x4',
     'to_opencv_camera_mat3x3',
     'triangulate_correspondences',
@@ -86,6 +88,11 @@ def compute_reprojection_errors(points3d: np.ndarray, points2d: np.ndarray,
     projected_points = project_points(points3d, proj_mat)
     points2d_diff = points2d - projected_points
     return np.linalg.norm(points2d_diff, axis=1)
+
+
+def compute_reprojection_error(point3d: np.ndarray, point2d: np.ndarray,
+                               proj_mat: np.ndarray) -> np.float32:
+    return compute_reprojection_errors(point3d.reshape(1, -1), point2d.reshape(1, -1), proj_mat)[0]
 
 
 def calc_inlier_indices(points3d: np.ndarray, points2d: np.ndarray,
@@ -236,6 +243,13 @@ def check_baseline(view_mat_1: np.ndarray, view_mat_2: np.ndarray,
     camera_center_2 = _to_camera_center(view_mat_2)
     distance = np.linalg.norm(camera_center_2 - camera_center_1)
     return distance >= min_distance
+
+
+def view_mat3x4_to_rodrigues_and_translation(view_mat: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    r_mat = view_mat[:, :3]
+    t_vec = view_mat[:, 3]
+    r_vec, _ = cv2.Rodrigues(r_mat)
+    return r_vec, t_vec
 
 
 def rodrigues_and_translation_to_view_mat3x4(r_vec: np.ndarray,

@@ -13,6 +13,7 @@ from corners import CornerStorage, FrameCorners
 from data3d import CameraParameters, PointCloud, Pose
 import frameseq
 from _camtrack import *
+from ba import run_bundle_adjustment
 
 
 class CameraTracker:
@@ -31,6 +32,8 @@ class CameraTracker:
         # print(self._n_frames)
         self._add_cloud_points(frame_ind1, frame_ind2)
         self._tracking()
+        run_bundle_adjustment(self._intrinsic_mat, corner_storage[:10], 1., self.track()[:10],
+                              self.point_cloud_builder())
 
     def _initialization(self):
         poses = []
@@ -118,14 +121,19 @@ class CameraTracker:
                     print(f"Processed frame {i}")
                     added = True
 
+                    if i % 10 == 0:
+                        self._track[i - 9: i + 1] = run_bundle_adjustment(self._intrinsic_mat,
+                                                                          self._corner_storage[i - 9: i + 1],
+                                                                          self._triangulation_parameters.max_reprojection_error,
+                                                                          self._track[i - 9: i + 1],
+                                                                          self.point_cloud_builder())
+
         prev = -1
         for i in range(self._n_frames):
             if self._track[i] is None:
                 self._track[i] = self._track[prev]
             else:
                 prev = i
-
-
 
     def _compute_frame_matrix(self, frame: FrameCorners):
         frame_ids = frame.ids.squeeze(-1)
@@ -159,8 +167,9 @@ class CameraTracker:
             print(f'Added {added_points} points from frames {frame1} and {frame2}')
 
     def point_cloud_builder(self) -> PointCloudBuilder:
-        return PointCloudBuilder(ids=np.array([i for i, point in enumerate(self._point_positions) if point is not None]),
-                                 points=np.array([point for point in self._point_positions if point is not None]))
+        return PointCloudBuilder(
+            ids=np.array([i for i, point in enumerate(self._point_positions) if point is not None]),
+            points=np.array([point for point in self._point_positions if point is not None]))
 
     def track(self) -> np.ndarray:
         return np.array(self._track)
