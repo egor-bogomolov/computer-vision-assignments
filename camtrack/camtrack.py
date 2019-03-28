@@ -32,8 +32,6 @@ class CameraTracker:
         # print(self._n_frames)
         self._add_cloud_points(frame_ind1, frame_ind2)
         self._tracking()
-        run_bundle_adjustment(self._intrinsic_mat, corner_storage[:10], 1., self.track()[:10],
-                              self.point_cloud_builder())
 
     def _initialization(self):
         poses = []
@@ -62,10 +60,10 @@ class CameraTracker:
 
         essential_mat, mask_essential = cv2.findEssentialMat(correspondences.points_1, correspondences.points_2,
                                                              self._intrinsic_mat,
-                                                             method=cv2.RANSAC, prob=0.999, threshold=1.)
+                                                             method=cv2.RANSAC, prob=0.9999, threshold=1.)
 
         _, mask_homography = cv2.findHomography(correspondences.points_1, correspondences.points_2,
-                                                method=cv2.RANSAC, confidence=0.999,
+                                                method=cv2.RANSAC, confidence=0.9999,
                                                 ransacReprojThreshold=self._triangulation_parameters.max_reprojection_error)
 
         # zeros in mask correspond to outliers
@@ -106,6 +104,7 @@ class CameraTracker:
         self._log_added_points(frame_ind1, frame_ind2, self._add_points(points, ids))
 
     def _tracking(self):
+        ba_step = 5
         added = True
         while added:
             added = False
@@ -121,12 +120,13 @@ class CameraTracker:
                     print(f"Processed frame {i}")
                     added = True
 
-                    if i % 10 == 0:
-                        self._track[i - 9: i + 1] = run_bundle_adjustment(self._intrinsic_mat,
-                                                                          self._corner_storage[i - 9: i + 1],
-                                                                          self._triangulation_parameters.max_reprojection_error,
-                                                                          self._track[i - 9: i + 1],
-                                                                          self.point_cloud_builder())
+                    if i > 0 and i % ba_step == 0:
+                        self._track[i - ba_step + 1: i + 1], self._point_positions = \
+                            run_bundle_adjustment(self._intrinsic_mat,
+                                                  self._corner_storage[i - ba_step + 1: i + 1],
+                                                  self._triangulation_parameters.max_reprojection_error,
+                                                  self._track[i - ba_step + 1: i + 1],
+                                                  self._point_positions)
 
         prev = -1
         for i in range(self._n_frames):
