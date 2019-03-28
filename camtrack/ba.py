@@ -2,6 +2,7 @@ from typing import List, Dict, Tuple
 
 from collections import namedtuple
 import numpy as np
+from scipy.sparse import csr_matrix
 from scipy.optimize import approx_fprime as derivative
 from time import time
 
@@ -87,7 +88,14 @@ def _vec_to_proj_mat(vec: np.ndarray, intrinsic_mat: np.ndarray) -> np.ndarray:
 
 
 def _reprojection_error(vec: np.ndarray, point2d: np.ndarray, intrinsic_mat: np.ndarray) -> np.float32:
-    return compute_reprojection_error(vec[6:9], point2d, _vec_to_proj_mat(vec, intrinsic_mat))
+    point3d = vec[6:9]
+    proj_mat = _vec_to_proj_mat(vec, intrinsic_mat)
+    point3d_hom = np.hstack((point3d, 1))
+    proj_point2d = np.dot(proj_mat, point3d_hom)
+    proj_point2d = proj_point2d / proj_point2d[2]
+    proj_point2d = proj_point2d.T[:2]
+    proj_error = (point2d - proj_point2d).reshape(-1)
+    return np.linalg.norm(proj_error)
 
 
 def _reprojection_errors(projection_errors: List[ProjectionError],
@@ -116,10 +124,14 @@ def _compute_jacobian(projection_errors: List[ProjectionError],
                       list_of_corners: List[FrameCorners],
                       mapping: Dict[int, int],
                       p: np.ndarray,
-                      intrinsic_mat: np.ndarray) -> np.ndarray:
+                      intrinsic_mat: np.ndarray) -> csr_matrix:
     start_time = time()
     print("Started Jacobian computation")
-    J = np.zeros((len(projection_errors), len(p)))
+    # J = np.zeros((len(projection_errors), len(p)))
+    rows = np.zeros(9 * len(projection_errors), dtype=np.int32)
+    cols = np.zeros(9 * len(projection_errors), dtype=np.int32)
+    vals = np.zeros(9 * len(projection_errors), dtype=np.float32)
+    cur = 0
     for row, proj_err in enumerate(projection_errors):
         vec = np.zeros(9)
 
@@ -136,12 +148,18 @@ def _compute_jacobian(projection_errors: List[ProjectionError],
                                          np.full_like(vec, 1e-9))
 
         for i in range(6):
-            J[row, mat_pos + i] = partial_derivatives[i]
+            rows[cur] = row
+            cols[cur] = mat_pos + i
+            vals[cur] = partial_derivatives[i]
+            cur += 1
 
         for i in range(3):
-            J[row, point_pos + i] = partial_derivatives[6 + i]
+            rows[cur] = row
+            cols[cur] = point_pos + i
+            vals[cur] = partial_derivatives[6 + i]
+            cur += 1
     print(f"Finished in {time() - start_time} sec")
-    return J
+    return csr_matrix((vals, (rows, cols)), shape=(len(projection_errors), len(p)))
 
 
 def _run_optimization(projection_errors: List[ProjectionError],
@@ -165,7 +183,7 @@ def _run_optimization(projection_errors: List[ProjectionError],
     while successful_steps < n_steps or total_steps < n_steps * 2:
         total_steps += 1
         J = _compute_jacobian(projection_errors, list_of_corners, mapping, p, intrinsic_mat)
-        JJ = J.T @ J
+        JJ = (J.T @ J).toarray()
         JJ += lmbd * np.diag(np.diag(JJ))
         U = JJ[:n, :n]
         W = JJ[:n, n:]
