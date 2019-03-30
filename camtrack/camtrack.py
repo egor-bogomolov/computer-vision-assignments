@@ -13,6 +13,7 @@ from corners import CornerStorage, FrameCorners
 from data3d import CameraParameters, PointCloud, Pose
 import frameseq
 from _camtrack import *
+from ba import run_bundle_adjustment
 
 
 class CameraTracker:
@@ -59,10 +60,10 @@ class CameraTracker:
 
         essential_mat, mask_essential = cv2.findEssentialMat(correspondences.points_1, correspondences.points_2,
                                                              self._intrinsic_mat,
-                                                             method=cv2.RANSAC, prob=0.999, threshold=1.)
+                                                             method=cv2.RANSAC, prob=0.9999, threshold=1.)
 
         _, mask_homography = cv2.findHomography(correspondences.points_1, correspondences.points_2,
-                                                method=cv2.RANSAC, confidence=0.999,
+                                                method=cv2.RANSAC, confidence=0.9999,
                                                 ransacReprojThreshold=self._triangulation_parameters.max_reprojection_error)
 
         # zeros in mask correspond to outliers
@@ -103,6 +104,7 @@ class CameraTracker:
         self._log_added_points(frame_ind1, frame_ind2, self._add_points(points, ids))
 
     def _tracking(self):
+        ba_step = 5
         added = True
         while added:
             added = False
@@ -118,14 +120,20 @@ class CameraTracker:
                     print(f"Processed frame {i}")
                     added = True
 
+                    if i > 0 and i % ba_step == 0:
+                        self._track[i - ba_step + 1: i + 1], self._point_positions = \
+                            run_bundle_adjustment(self._intrinsic_mat,
+                                                  self._corner_storage[i - ba_step + 1: i + 1],
+                                                  self._triangulation_parameters.max_reprojection_error,
+                                                  self._track[i - ba_step + 1: i + 1],
+                                                  self._point_positions)
+
         prev = -1
         for i in range(self._n_frames):
             if self._track[i] is None:
                 self._track[i] = self._track[prev]
             else:
                 prev = i
-
-
 
     def _compute_frame_matrix(self, frame: FrameCorners):
         frame_ids = frame.ids.squeeze(-1)
@@ -159,8 +167,9 @@ class CameraTracker:
             print(f'Added {added_points} points from frames {frame1} and {frame2}')
 
     def point_cloud_builder(self) -> PointCloudBuilder:
-        return PointCloudBuilder(ids=np.array([i for i, point in enumerate(self._point_positions) if point is not None]),
-                                 points=np.array([point for point in self._point_positions if point is not None]))
+        return PointCloudBuilder(
+            ids=np.array([i for i, point in enumerate(self._point_positions) if point is not None]),
+            points=np.array([point for point in self._point_positions if point is not None]))
 
     def track(self) -> np.ndarray:
         return np.array(self._track)
